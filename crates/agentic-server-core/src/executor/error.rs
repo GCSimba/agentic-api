@@ -3,6 +3,7 @@ use thiserror::Error;
 
 use crate::StorageError;
 use crate::tool::ToolError;
+use crate::types::file_search::FileSearchError;
 use crate::types::io::input::InputValidationError;
 use crate::types::io::output::McpListTools;
 use crate::types::request_response::{
@@ -32,6 +33,8 @@ impl std::fmt::Display for ResourceLimit {
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum ExecutorError {
+    #[error(transparent)]
+    FileSearch(#[from] FileSearchError),
     /// Request-owned streaming orchestration panicked. Never forward panic data.
     #[error("stream producer panicked")]
     StreamProducerPanicked,
@@ -197,6 +200,9 @@ impl ExecutorError {
     #[must_use]
     pub fn http_status(&self) -> StatusCode {
         match self.client_visible_error() {
+            Self::FileSearch(error) => {
+                StatusCode::from_u16(error.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+            }
             Self::Storage(StorageError::PreviousResponseNotFound { .. })
             | Self::ConversationLocked { .. }
             | Self::Tool(
@@ -237,6 +243,13 @@ impl ExecutorError {
     #[must_use]
     pub fn error_type(&self) -> &'static str {
         match self.client_visible_error() {
+            Self::FileSearch(error) => match error.status_code() {
+                400 => "invalid_request_error",
+                404 => "not_found",
+                409 => "conflict_error",
+                502 => "upstream_error",
+                _ => "server_error",
+            },
             Self::ConversationLocked { .. }
             | Self::Tool(
                 ToolError::Config(_)
@@ -321,6 +334,7 @@ impl ExecutorError {
     #[must_use]
     pub fn error_message(&self) -> String {
         match self.client_visible_error() {
+            Self::FileSearch(error) => error.public_message(),
             Self::Storage(
                 error @ (StorageError::InvalidItemId { .. }
                 | StorageError::ItemAlreadyInConversation
