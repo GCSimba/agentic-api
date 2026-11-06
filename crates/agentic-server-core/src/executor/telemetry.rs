@@ -81,8 +81,7 @@ impl Route {
     }
 }
 
-/// Terminal state of the execution itself, independent of whether the client
-/// received it.
+/// Terminal state of execution, independent of client delivery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionOutcome {
     /// The response reached a terminal `completed` status.
